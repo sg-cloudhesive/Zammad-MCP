@@ -43,11 +43,14 @@ from .models import (
     GetKBCategoryParams,
     GetKnowledgeBaseParams,
     GetOrganizationParams,
+    GetTicketLinksParams,
     GetTicketParams,
     GetTicketStatsParams,
     GetTicketTagsParams,
     GetUserParams,
     Group,
+    LinkTicketsParams,
+    LinkTicketsResult,
     ListKBAnswersParams,
     ListKnowledgeBasesParams,
     ListParams,
@@ -64,6 +67,8 @@ from .models import (
     TicketCreate,
     TicketExportParams,
     TicketIdGuidanceError,
+    TicketLink,
+    TicketLinksResult,
     TicketMergeParams,
     TicketMergeResult,
     TicketPriority,
@@ -2296,6 +2301,62 @@ class ZammadMCPServer:
                 target_ticket_id=params.target_ticket_id,
             )
             return TicketMergeResult(result=payload["result"], target_ticket=Ticket(**payload["target_ticket"]))
+
+        @self.mcp.tool(annotations=_write_annotations("Link Tickets"))
+        @flat_params(LinkTicketsParams)
+        def zammad_link_tickets(params: LinkTicketsParams) -> LinkTicketsResult:
+            """Link two tickets so each appears in the other's Links panel.
+
+            Use internal ticket IDs for both tickets, not display numbers; search by
+            number first to get the IDs. To list existing links use zammad_get_ticket_links.
+            To combine duplicate tickets use zammad_merge_tickets instead.
+
+            Parameters:
+                source_ticket_id (int): Internal ID of the source ticket (required)
+                target_ticket_id (int): Internal ID of the target ticket (required)
+                link_type (str, optional): "normal" (default), "parent" or "child"
+
+            Returns:
+                LinkTicketsResult with the source ticket's display number and the link type
+
+            Examples:
+                - Use when: Linking a change request to the ticket that prompted it
+                - Use when: Relating an incident to its follow-up problem ticket
+                - Don't use when: Tickets are duplicates (use zammad_merge_tickets)
+
+            Note:
+                Verify the parent/child direction on test tickets before relying on it.
+                Requires agent access to both tickets.
+            """
+            client = self.get_client()
+            result = client.link_tickets(
+                source_ticket_id=params.source_ticket_id,
+                target_ticket_id=params.target_ticket_id,
+                link_type=params.link_type,
+            )
+            return LinkTicketsResult(**result)
+
+        @self.mcp.tool(annotations=_read_only_annotations("Get Ticket Links"))
+        @flat_params(GetTicketLinksParams)
+        def zammad_get_ticket_links(params: GetTicketLinksParams) -> TicketLinksResult:
+            """List the tickets linked to a ticket, with link type, number and title.
+
+            Use the internal ticket_id, not the display number. To create a link use
+            zammad_link_tickets.
+
+            Parameters:
+                ticket_id (int): Internal ID of the ticket (required)
+
+            Returns:
+                TicketLinksResult with one entry per linked ticket (empty list when none)
+
+            Examples:
+                - Use when: Checking which change request is linked to a ticket
+                - Don't use when: Looking for tickets by text (use zammad_search_tickets)
+            """
+            client = self.get_client()
+            links = client.get_ticket_links(params.ticket_id)
+            return TicketLinksResult(ticket_id=params.ticket_id, links=[TicketLink(**link) for link in links])
 
         @self.mcp.tool(annotations=_idempotent_write_annotations("Add Ticket Tag"))
         @flat_params(TagOperationParams)

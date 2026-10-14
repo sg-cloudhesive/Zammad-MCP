@@ -938,6 +938,89 @@ class ZammadClient:
         category_ids = self._expand_category_ids(kb_id, root_ids)
         return self._answers_matching_query(kb_id, category_ids, query.lower())
 
+    def link_tickets(self, source_ticket_id: int, target_ticket_id: int, link_type: str = "normal") -> dict[str, Any]:
+        """Link two tickets via POST /links/add.
+
+        Zammad identifies the link source by its display NUMBER but the target by its
+        internal ID, so the source ticket's number is looked up first.
+
+        Args:
+            source_ticket_id: Internal ID of the source ticket.
+            target_ticket_id: Internal ID of the target ticket.
+            link_type: "normal", "parent" or "child".
+
+        Returns:
+            Dictionary with linked, source_ticket_id, source_ticket_number,
+            target_ticket_id and link_type.
+
+        Raises:
+            ValueError: If both IDs refer to the same ticket.
+            requests.HTTPError: If Zammad rejects the request (e.g. 403, 404, 422).
+
+        """
+        if source_ticket_id == target_ticket_id:
+            msg = "source_ticket_id and target_ticket_id must be different tickets"
+            raise ValueError(msg)
+        source_number = str(self.api.ticket.find(source_ticket_id)["number"])
+        response = self.api.session.post(
+            f"{self.url}/links/add",
+            json={
+                "link_type": link_type,
+                "link_object_source": "Ticket",
+                "link_object_source_number": source_number,
+                "link_object_target": "Ticket",
+                "link_object_target_value": target_ticket_id,
+            },
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        if not response.ok:
+            raise requests.HTTPError(response.text)
+        return {
+            "linked": True,
+            "source_ticket_id": source_ticket_id,
+            "source_ticket_number": source_number,
+            "target_ticket_id": target_ticket_id,
+            "link_type": link_type,
+        }
+
+    def get_ticket_links(self, ticket_id: int) -> list[dict[str, Any]]:
+        """List tickets linked to a ticket via GET /links.
+
+        Non-ticket link objects (e.g. knowledge base answers) are skipped.
+
+        Returns:
+            List of dicts with link_type, ticket_id, number and title.
+
+        Raises:
+            requests.HTTPError: If the API request fails.
+
+        """
+        response = self.api.session.get(
+            f"{self.url}/links",
+            params={"link_object": "Ticket", "link_object_value": ticket_id},
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        if not response.ok:
+            raise requests.HTTPError(response.text)
+        data = dict(response.json())
+        tickets = (data.get("assets") or {}).get("Ticket") or {}
+        links: list[dict[str, Any]] = []
+        for link in data.get("links") or []:
+            if link.get("link_object") != "Ticket":
+                continue
+            linked_id = int(link["link_object_value"])
+            asset = tickets.get(str(linked_id)) or {}
+            number = asset.get("number")
+            links.append(
+                {
+                    "link_type": str(link.get("link_type", "normal")),
+                    "ticket_id": linked_id,
+                    "number": str(number) if number is not None else None,
+                    "title": asset.get("title"),
+                }
+            )
+        return links
+
     def merge_tickets(
         self,
         source_ticket_id: int,

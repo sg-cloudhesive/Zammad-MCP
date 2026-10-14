@@ -579,6 +579,60 @@ class TicketMergeResult(StrictBaseModel):
     target_ticket: Ticket = Field(description="The surviving target ticket after the merge")
 
 
+TicketLinkType = Literal["normal", "parent", "child"]
+
+
+class LinkTicketsParams(StrictBaseModel):
+    """Link two tickets so each appears in the other's Links panel."""
+
+    source_ticket_id: int = Field(gt=0, description="Internal ID of the source ticket (not the display number)")
+    target_ticket_id: int = Field(gt=0, description="Internal ID of the target ticket (not the display number)")
+    link_type: TicketLinkType = Field(
+        default="normal",
+        description="Link type: 'normal', 'parent' or 'child'. Verify the parent/child direction on test tickets.",
+    )
+
+    @model_validator(mode="after")
+    def reject_self_link(self) -> "LinkTicketsParams":
+        """A ticket cannot be linked to itself."""
+        if self.source_ticket_id == self.target_ticket_id:
+            msg = "source_ticket_id and target_ticket_id must be different tickets"
+            raise ValueError(msg)
+        return self
+
+
+class LinkTicketsResult(StrictBaseModel):
+    """Result of linking two tickets."""
+
+    linked: bool = Field(description="True when Zammad accepted the link")
+    source_ticket_id: int = Field(description="Internal ID of the source ticket")
+    source_ticket_number: str = Field(description="Display number of the source ticket")
+    target_ticket_id: int = Field(description="Internal ID of the target ticket")
+    link_type: TicketLinkType = Field(description="Link type that was created")
+
+
+class GetTicketLinksParams(StrictBaseModel):
+    """List the tickets linked to a ticket."""
+
+    ticket_id: int = Field(gt=0, description="Internal ID of the ticket (not the display number)")
+
+
+class TicketLink(StrictBaseModel):
+    """One ticket linked to the requested ticket."""
+
+    link_type: str = Field(description="Zammad link type, e.g. 'normal', 'parent' or 'child'")
+    ticket_id: int = Field(description="Internal ID of the linked ticket")
+    number: str | None = Field(default=None, description="Display number of the linked ticket")
+    title: str | None = Field(default=None, description="Title of the linked ticket")
+
+
+class TicketLinksResult(StrictBaseModel):
+    """Tickets linked to a ticket."""
+
+    ticket_id: int = Field(description="Internal ID of the requested ticket")
+    links: list[TicketLink] = Field(default_factory=list, description="Linked tickets (empty when none)")
+
+
 class TagOperationParams(StrictBaseModel):
     """Tag operation (add/remove) request parameters."""
 
