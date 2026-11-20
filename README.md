@@ -473,6 +473,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code standards, te
 
 - [Documentation index](docs/README.md) — Index of all documentation
 - [HTTP Transport Deployment Guide](docs/deployment/http-transport.md) — Reverse proxy, systemd, Compose, cloud deployment, and webhook events
+- [Ticket context enrichment](docs/deployment/ticket-context.md) — Optional agent-portal customer context on `zammad_get_ticket`
 - [Configuration reference](docs/reference/configuration.md) — Every environment variable with its default and allowed values
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Technical design
 - [SECURITY.md](SECURITY.md) — Security policy

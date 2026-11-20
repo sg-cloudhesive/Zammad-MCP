@@ -82,6 +82,7 @@ from .models import (
 )
 from .oauth_settings import OAuthSettings
 from .resilience import CircuitOpenError, RetryExhaustedError
+from .ticket_context import TicketContextMiddleware, TicketContextSettings
 from .tool_params import flat_params
 from .webhooks import WebhookHandler
 
@@ -1512,6 +1513,10 @@ class ZammadMCPServer:
         self.mcp = FastMCP("zammad_mcp", **mcp_kwargs)
         if self.audit.enabled:
             self.mcp.add_middleware(AuditMiddleware(self.audit))
+        ticket_context = TicketContextSettings.from_env()
+        if ticket_context.enabled:
+            logger.info("Ticket context enrichment enabled for %s", ticket_context.log_host())
+            self.mcp.add_middleware(TicketContextMiddleware(ticket_context))
         self._setup_tools()
         self._setup_resources()
         self._setup_prompts()
