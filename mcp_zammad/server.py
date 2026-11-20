@@ -1936,6 +1936,10 @@ class ZammadMCPServer:
                     - priority (str): Priority name (default: "2 normal")
                     - article_type (str): Article type - "note", "email", "phone" (default: "note")
                     - article_internal (bool): Whether article is internal-only (default: False)
+                    - custom_fields (dict[str, Any] | None): Custom object attributes defined in
+                      Zammad Admin, keyed by attribute name (e.g. {"category": "Incident"}).
+                      Required when Zammad marks an attribute mandatory on create; Zammad
+                      rejects the ticket with "Missing required value for field '<name>'!"
 
             Returns:
                 Ticket: The created ticket object with schema:
@@ -1956,6 +1960,7 @@ class ZammadMCPServer:
             Examples:
                 - Use when: "Create ticket for server outage" -> title, group, customer, article_body
                 - Use when: "New high priority ticket" -> add priority="3 high"
+                - Use when: "Create ticket with category Incident" -> add custom_fields={"category": "Incident"}
                 - Don't use when: Ticket already exists (use zammad_update_ticket)
                 - Don't use when: Only adding comment (use zammad_add_article)
 
@@ -2006,6 +2011,9 @@ class ZammadMCPServer:
                     - group (str | None): New group name
                     - owner (str | None): New owner email/login
                     - customer (str | None): New customer email/login
+                    - organization_id (int | None): New organization ID (see zammad_search_organizations).
+                      Zammad keeps an organization only while the ticket's customer is a member of it;
+                      if it was not kept the call fails with an error saying so
                     - pending_time (datetime | None): Pending-until timestamp (ISO 8601),
                       required when state is "pending reminder" or "pending close"
                     - time_unit (float | None): Time spent for time accounting
@@ -2032,6 +2040,7 @@ class ZammadMCPServer:
                 - Use when: "Set ticket 123 to pending until 2026-07-01" ->
                   ticket_id=123, state="pending reminder", pending_time="2026-07-01T08:00:00Z"
                 - Use when: "Reassign ticket to Alice" -> ticket_id=123, owner="alice@company.com"
+                - Use when: "File ticket 123 under organization 45" -> ticket_id=123, organization_id=45
                 - Use when: "Set region to north on ticket 123" -> ticket_id=123, custom_fields={"region": "north"}
                 - Don't use when: Adding comments (use zammad_add_article)
                 - Don't use when: Adding tags (use zammad_add_ticket_tag)
@@ -2039,6 +2048,8 @@ class ZammadMCPServer:
             Error Handling:
                 - Raises TicketIdGuidanceError (via _handle_ticket_not_found_error) when Zammad
                   reports the ticket as not found; the message explains ID vs number
+                - Raises a ValueError when organization_id was sent but Zammad kept a different
+                  organization (the customer is not a member of the requested one)
                 - Invalid field values fail Pydantic validation before any API call
                 - Any other exception (Zammad HTTP error text for 401/403/422, e.g. unknown
                   group/owner/customer) propagates; FastMCP returns a tool error with that text
@@ -2054,6 +2065,14 @@ class ZammadMCPServer:
                 # Extract ticket_id and update fields separately
                 update_data = params.model_dump(exclude={"ticket_id"}, exclude_none=True)
                 ticket_data = client.update_ticket(ticket_id=params.ticket_id, **update_data)
+                # Zammad resets a ticket's organization on save unless its customer is a member of the
+                # requested one, and still answers 200. Report that instead of claiming success.
+                if params.organization_id is not None and ticket_data.get("organization_id") != params.organization_id:
+                    raise ValueError(  # noqa: TRY301
+                        f"Zammad kept organization {ticket_data.get('organization_id')} instead of "
+                        f"{params.organization_id}: a ticket keeps an organization only while its customer is a "
+                        "member of it. Add the customer to that organization (or change the customer) and retry."
+                    )
                 return Ticket(**ticket_data)
             except Exception as e:
                 _handle_ticket_not_found_error(params.ticket_id, e)

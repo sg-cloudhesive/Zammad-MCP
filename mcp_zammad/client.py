@@ -355,8 +355,21 @@ class ZammadClient:
         priority: str = "2 normal",
         article_type: str = "note",
         article_internal: bool = False,
+        custom_fields: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Create a new ticket."""
+        """Create a new ticket.
+
+        Args:
+            custom_fields: Optional. Custom object attributes sent as top-level ticket keys, e.g. an
+                attribute that Zammad Admin marks mandatory on create.
+
+        Raises:
+            ValueError: If a custom field shadows a built-in key.
+        """
+        built_in_keys = {"title", "group", "customer", "state", "priority", "article"}
+        for name in custom_fields or {}:
+            if name in built_in_keys:
+                raise ValueError(f"custom_fields key '{name}' is a built-in field; pass it as a named argument")
         ticket_data = {
             "title": title,
             "group": group,
@@ -369,6 +382,7 @@ class ZammadClient:
                 "internal": article_internal,
             },
         }
+        ticket_data.update(custom_fields or {})
 
         return dict(self.api.ticket.create(ticket_data))
 
@@ -384,6 +398,7 @@ class ZammadClient:
         time_unit: float | None = None,
         custom_fields: dict[str, Any] | None = None,
         customer: str | None = None,
+        organization_id: int | None = None,
     ) -> dict[str, Any]:
         """Update an existing ticket.
 
@@ -396,6 +411,8 @@ class ZammadClient:
             group: Optional. New group name.
             pending_time: Optional. Pending-until timestamp for pending states; datetimes are sent as ISO 8601.
             customer: Optional. New customer login/email.
+            organization_id: Optional. New organization ID. Zammad keeps it only while the ticket's customer
+                is a member of that organization.
             time_unit: Optional. Time spent for time accounting; must be > 0.
             custom_fields: Optional. Custom object attributes sent as top-level ticket keys.
 
@@ -419,6 +436,7 @@ class ZammadClient:
             "owner": owner,
             "group": group,
             "customer": customer,
+            "organization_id": organization_id,
             "pending_time": pending_time,
             "time_unit": time_unit,
         }
